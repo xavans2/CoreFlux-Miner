@@ -1,45 +1,70 @@
-import time
 import hashlib
-import threading
+import time
+import multiprocessing
+
+def worker(core_id, difficulty, stop_event, result_queue):
+    prefix = "0" * difficulty
+    nonce = core_id * 1_000_000
+    hash_count = 0
+    start = time.time()
+
+    data = f"CoreFlux-core-{core_id}"
+
+    while not stop_event.is_set():
+        text = f"{data}{nonce}".encode()
+        h = hashlib.sha256(text).hexdigest()
+        hash_count += 1
+
+        if h.startswith(prefix):
+            elapsed = time.time() - start
+            hps = hash_count / elapsed
+
+            result_queue.put({
+                "core": core_id,
+                "hash": h,
+                "nonce": nonce,
+                "hashrate": hps
+            })
+
+            # reset
+            hash_count = 0
+            start = time.time()
+
+        nonce += 1
+
 
 class Miner:
     def __init__(self, api_client, miner_name, difficulty=4):
         self.api = api_client
         self.name = miner_name
         self.difficulty = difficulty
-        self.running = True
-
-        self.hash_count = 0
-        self.start_time = time.time()
-
-    def hash_block(self, data, nonce):
-        text = f"{data}{nonce}".encode()
-        return hashlib.sha256(text).hexdigest()
 
     def start(self):
-        print("⛏️ CoreFlux miner started (PoW mode)")
+        cores = multiprocessing.cpu_count()
 
-        prefix = "0" * self.difficulty
-        nonce = 0
+        print(f"⛏️ CoreFlux Miner starting on {cores} CPU cores")
 
-        data = f"{self.name}-block"
+        stop_event = multiprocessing.Event()
+        result_queue = multiprocessing.Queue()
 
-        while self.running:
-            hash_result = self.hash_block(data, nonce)
-            self.hash_count += 1
+        processes = []
 
-            if hash_result.startswith(prefix):
-                elapsed = time.time() - self.start_time
-                hashrate = self.hash_count / elapsed if elapsed > 0 else 0
+        for i in range(cores):
+            p = multiprocessing.Process(
+                target=worker,
+                args=(i, self.difficulty, stop_event, result_queue)
+            )
+            processes.append(p)
+            p.start()
 
-                print("\n🔥 BLOCK FOUND")
-                print("Hash:", hash_result)
-                print("Nonce:", nonce)
-                print(f"Hashrate: {hashrate:.2f} H/s\n")
+        try:
+            while True:
+                if not result_queue.empty():
+                    result = result_queue.get()
+                    print("\n🔥 BLOCK FOUND")
+                    print(result)
 
-                # reset voor volgende block
-                nonce = 0
-                self.hash_count = 0
-                self.start_time = time.time()
-
-            nonce += 1
+        except KeyboardInterrupt:
+            stop_event.set()
+            for p in processes:
+                p.terminate()
