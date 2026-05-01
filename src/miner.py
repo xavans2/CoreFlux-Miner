@@ -1,6 +1,7 @@
 import hashlib
 import time
 import multiprocessing
+import time
 
 
 def worker(core_id, difficulty, stop_event, result_queue):
@@ -45,41 +46,55 @@ class Miner:
         self.difficulty = difficulty
 
     def start(self):
-        total_cores = multiprocessing.cpu_count()
-        used_cores = max(1, total_cores // 2)
+    import multiprocessing
+    import time
 
-        print("⛏️ CoreFlux Miner starting")
-        print(f"🧠 Total cores: {total_cores}")
-        print(f"⚙️ Using cores: {used_cores} (50%)")
+    total_cores = multiprocessing.cpu_count()
+    used_cores = max(1, total_cores // 2)
 
-        stop_event = multiprocessing.Event()
-        result_queue = multiprocessing.Queue()
+    print("⛏️ CoreFlux Miner starting")
+    print(f"🧠 Total cores: {total_cores}")
+    print(f"⚙️ Using cores: {used_cores} (50%)")
 
-        processes = []
+    stop_event = multiprocessing.Event()
+    result_queue = multiprocessing.Queue()
 
-        for i in range(used_cores):
-            p = multiprocessing.Process(
-                target=worker,
-                args=(i, self.difficulty, stop_event, result_queue)
-            )
-            p.start()
-            processes.append(p)
+    processes = []
 
-        try:
-            while True:
-                if not result_queue.empty():
-                    result = result_queue.get()
+    for i in range(used_cores):
+        p = multiprocessing.Process(
+            target=worker,
+            args=(i, self.difficulty, stop_event, result_queue)
+        )
+        p.start()
+        processes.append(p)
 
-                    print("\n🔥 BLOCK FOUND")
-                    print(f"Core: {result['core']}")
-                    print(f"Hash: {result['hash']}")
-                    print(f"Nonce: {result['nonce']}")
-                    print(f"Hashrate: {result['hashrate']} H/s")
+    # ⏱️ DEBUG TIMER
+    last_debug = time.time()
 
-        except KeyboardInterrupt:
-            print("\n🛑 Stopping miner...")
-            stop_event.set()
+    try:
+        while True:
 
-            for p in processes:
-                p.terminate()
-                p.join()
+            # 🔥 block events
+            if not result_queue.empty():
+                result = result_queue.get()
+                print("\n🔥 BLOCK FOUND")
+                print(result)
+
+            # 🧪 DEBUG elke 30 sec
+            if time.time() - last_debug >= 30:
+                print("\n📊 === COREFLUX DEBUG ===")
+                print(f"Cores active: {used_cores}")
+                print(f"Difficulty: {self.difficulty}")
+                print("Status: mining...")
+                print("=======================\n")
+
+                last_debug = time.time()
+
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping miner...")
+        stop_event.set()
+
+        for p in processes:
+            p.terminate()
+            p.join()
